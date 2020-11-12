@@ -88,9 +88,9 @@ function doJoin(ast: Query, db: Database, rows: Row[]): Row[] {
             return previousRows.flatMap(previousRow => {
                 const joinedRows = []
                 for (const joinRow of joinTable) {
-                    const joinedRow = { ...previousRow, ...joinRow }
-                    if (compareRow(joinClause.fields[0], joinClause.fields[1], "=", joinedRow)) {
-                        joinedRows.push(joinedRow)
+                    const potentialRow = { ...previousRow, ...joinRow }
+                    if (compareRow(joinClause.fields[0], joinClause.fields[1], "=", potentialRow)) {
+                        joinedRows.push(potentialRow)
                     }
                 }
                 return joinedRows
