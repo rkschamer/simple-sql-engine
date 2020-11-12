@@ -1,20 +1,18 @@
 import { parse } from "./parser";
-import { Query, Field, ScalarValue } from "./ast";
+import { Query, Field, ScalarValue, SelectClause } from "./ast";
+import { isDefined, pipe, conditional  } from "./util";
 
-
-interface Database {
+export interface Database {
     [key: string]: Array<Row>
 }
 
-interface Row {
+export interface Row {
     [key: string]: ScalarValue
 }
 
 function getFqnColumn(column: Field) {
     return `${column.table}.${column.column}`
 }
-
-
 
 function getValue(value: Field | ScalarValue, row: Row): ScalarValue {
     if (value instanceof Field) {
@@ -39,98 +37,88 @@ function compareRow(left: Field | ScalarValue, right: Field | ScalarValue, opera
     }
 }
 
-// class Result {
-//     readonly rows: Row[] 
+function padColumnNames(rawDb: Database): Database {
+    const newDb: Database = {}
+    for (const [tableName, rows] of Object.entries(rawDb)) {
+        newDb[tableName] = rows.map(r => {
+            const newRow: Row = {}
+            for (const [key, value] of Object.entries(r)) {
+                newRow[`${tableName}.${key}`] = value
+            }
+            return newRow
+        })
+    }
+    return newDb
+}
 
-//     constructor(rows: Row[]){
-//         this.rows = rows
-//     }
+function getTable(db: Database, tableName: string): Row[] {
+    const table = db[tableName]
+    if (!table) {
+        throw new Error(`Cannot find table with name ${tableName}`);
+    }
+    return table
+}
 
-//     /**
-//      * process
-//      */
-//     public process(p: (r: Row[]) => Row[]) : Result {
-//         return new Result(p(this.rows))
-//     }
-// }
+
+function doSelect(ast: Query, db: Database, rows: Row[]): Row[] {
+    return getTable(db, ast.select.table)
+}
+
+function doProject(ast: Query, _db: Database, rows: Row[]): Row[] {
+    const selectedColumnsFqn = ast.select.fields.map(getFqnColumn)
+    return rows.map(r => Object.fromEntries(Object.entries(r).filter(([key, _value]) => selectedColumnsFqn.includes(key))))
+}
+
+function doWhere(ast: Query, _db: Database, rows: Row[]): Row[] {
+    const whereClause = ast.where
+    if (!whereClause) {
+        throw new Error("Cannot execute doWhere without a where-clause")
+    }
+    return rows.filter(r => compareRow(whereClause.left, whereClause.right, whereClause.operator, r))
+}
+
+function doJoin(ast: Query, db: Database, rows: Row[]): Row[] {
+    if (!ast.joins) {
+        throw new Error("Cannot execute doJpin without a join-clause(s)")
+    }
+
+    let result = rows
+    for (const joinClause of ast.joins) {
+        const joinTable: Array<Row> = getTable(db, joinClause.table)
+
+        const joinedRows = []
+        for (const resultRow of result) {
+            for (const joinRow of joinTable) {
+                const joinedRow = { ...resultRow, ...joinRow }
+                if (compareRow(joinClause.fields[0], joinClause.fields[1], "=", joinedRow)) {
+                    joinedRows.push(joinedRow)
+                }
+            }
+            result = joinedRows
+        }
+        
+    }
+    return result
+}
 
 export class SQLEngine {
 
-    private db: Database
-
-    constructor(db: Database) {
-        this.db = this.initialize(db)
+    constructor(private readonly rawDb: Database) {
     }
 
-    private initialize(db: Database): Database {
-        // change to fully-qualified column names to make further processing easier
-        const newDb: Database = {}
-        for (const [tableName, rows] of Object.entries(db)) {
-            newDb[tableName] = rows.map(r => {
-                const newRow: Row = {}
-                for (const [key, value] of Object.entries(r)) {
-                    newRow[`${tableName}.${key}`] = value
-                }
-                return newRow
-            })
-        }
-        return newDb
-    }
-
-    /**
-     * execute
-     */
-    public execute(query: string): any {
+    public execute(query: string): Row[] {
         const ast: Query | null = parse(query)
         if (ast === null) {
             throw new Error(`Cannot parse: '${query}'`)
         }
 
-        const table: Row[] = this.getTable(ast.select.table)
+        const db = padColumnNames(this.rawDb)
 
-        let result = table
-
-        if (ast.joins) {
-            for (const joinClause of ast.joins) {
-                const joinTable: Array<Row> = this.getTable(joinClause.table)
-
-                const joinedRows = []
-                for (const resultRow of result) {
-                    for (const joinRow of joinTable) {
-                        const joinedRow = { ...resultRow, ...joinRow }
-                        if (compareRow(joinClause.fields[0], joinClause.fields[1], "=", joinedRow)) {
-                            joinedRows.push(joinedRow)
-                        }
-                    }
-                }
-                result = joinedRows
-            }
-        }
-
-        if (ast.where) {
-            const whereClause = ast.where
-            result = result.filter(row =>
-                compareRow(whereClause.left, whereClause.right, whereClause.operator, row)
-            )
-        }
-
-        const selectedColumnsFqn = ast.select.fields.map(getFqnColumn)
-        result = result.map(r => {
-            const resultRow: Row = {}
-            for (const selectedColumn of selectedColumnsFqn) {
-                resultRow[selectedColumn] = r[selectedColumn]
-            }
-            return resultRow
-        })
-
-        return result;
-    }
-
-    private getTable(name: string): Row[]{
-        const table = this.db[name]
-        if (table === undefined || table === null) {
-            throw new Error(`Cannot find table in database: '${name}'`)
-        }
-        return table;
+        return pipe(
+            doSelect,
+            conditional(isDefined(ast.joins), doJoin),
+            conditional(isDefined(ast.where), doWhere),
+            doProject
+        )(ast,db)
     }
 }

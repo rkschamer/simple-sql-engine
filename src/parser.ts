@@ -83,14 +83,14 @@ const queryExpression = seq(
     return new Query(select, joins, where)
 })
 
-export function parse(rawString: string) : Query | null {
+export function parse(rawString: string) : Query  {
     const noLineBreaks = rawString.replace(/\r?\n|\r/g, "")
     const result = queryExpression.exec(noLineBreaks, 0)
 
     if(result instanceof ParserError) {
-        console.error(`Error while parsing at position ${result.pos}: expected token ${result.expectedToken}, acutal token ${result.stringToParse}`)
-        return null
+        throw new Error(`Error while parsing at position ${result.pos}: expected token ${result.expectedToken}, acutal token ${result.stringToParse}`)
+        
     } 
 
-    return result.match as Query
+    return result.match
 }
