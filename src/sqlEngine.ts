@@ -1,6 +1,6 @@
 import { parse } from "./parser";
 import { Query, Field, ScalarValue, SelectClause } from "./ast";
-import { isDefined, pipe, conditional  } from "./util";
+import { isDefined, pipe, conditional } from "./util";
 
 export interface Database {
     [key: string]: Array<Row>
@@ -82,23 +82,22 @@ function doJoin(ast: Query, db: Database, rows: Row[]): Row[] {
         throw new Error("Cannot execute doJpin without a join-clause(s)")
     }
 
-    let result = rows
-    for (const joinClause of ast.joins) {
-        const joinTable: Array<Row> = getTable(db, joinClause.table)
-
-        const joinedRows = []
-        for (const resultRow of result) {
-            for (const joinRow of joinTable) {
-                const joinedRow = { ...resultRow, ...joinRow }
-                if (compareRow(joinClause.fields[0], joinClause.fields[1], "=", joinedRow)) {
-                    joinedRows.push(joinedRow)
+    return ast.joins.reduce(
+        (previousRows, joinClause) => {
+            const joinTable: Array<Row> = getTable(db, joinClause.table)
+            return previousRows.flatMap(previousRow => {
+                const joinedRows = []
+                for (const joinRow of joinTable) {
+                    const joinedRow = { ...previousRow, ...joinRow }
+                    if (compareRow(joinClause.fields[0], joinClause.fields[1], "=", joinedRow)) {
+                        joinedRows.push(joinedRow)
+                    }
                 }
-            }
-            result = joinedRows
-        }
-        
-    }
-    return result
+                return joinedRows
+            })
+        },
+        rows
+    )
 }
 
 export class SQLEngine {
@@ -119,6 +118,6 @@ export class SQLEngine {
             conditional(isDefined(ast.joins), doJoin),
             conditional(isDefined(ast.where), doWhere),
             doProject
-        )(ast,db)
+        )(ast, db)
     }
 }
