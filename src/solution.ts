@@ -1,3 +1,4 @@
+import { Database, Row } from "./preloaded"
 
 type ScalarValue = string | number
 
@@ -253,14 +254,6 @@ function isDefined(value: object | undefined | null): boolean{
     return value !== undefined && value !== null
 }
 
-interface Database {
-    [key: string]: Array<Row>
-}
-
-interface Row {
-    [key: string]: ScalarValue
-}
-
 function getFqnColumn(column: Field) {
     return `${column.table}.${column.column}`
 }
@@ -351,7 +344,7 @@ function doJoin(ast: Query, db: Database, rows: Row[]): Row[] {
     )
 }
 
-class SQLEngine {
+export class SQLEngine {
 
     constructor(private readonly rawDb: Database) {
     }
