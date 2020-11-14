@@ -3,25 +3,25 @@ import { Database, Row } from "./preloaded"
 type ScalarValue = string | number
 
 class Field {
-    constructor(public readonly table: string, public readonly column: string) {    }
+    constructor(public readonly table: string, public readonly column: string) { }
 }
-class SelectClause { 
-    constructor(public readonly table: string, public readonly fields: Field[]){
+class SelectClause {
+    constructor(public readonly table: string, public readonly fields: Field[]) {
 
     }
 }
 class JoinClause {
-    constructor(public readonly table: string, public readonly fields: Field[]){
-
-    }
- }
-class WhereClause { 
-    constructor(public readonly left: Field | ScalarValue, public readonly right: Field | ScalarValue, public operator: string){
+    constructor(public readonly table: string, public readonly fields: Field[]) {
 
     }
 }
-class Query  {
-    constructor(public readonly select: SelectClause, public readonly joins: JoinClause[] | null, public readonly where: WhereClause | null){}
+class WhereClause {
+    constructor(public readonly left: Field | ScalarValue, public readonly right: Field | ScalarValue, public operator: string) {
+
+    }
+}
+class Query {
+    constructor(public readonly select: SelectClause, public readonly joins: JoinClause[] | null, public readonly where: WhereClause | null) { }
 }
 
 class Result<TMatch> {
@@ -149,14 +149,14 @@ const ows = regex(/\s*/)
 const dot = regex(/\./)
 const comma = regex(/\s*,\s*/)
 const str = regex(/(["'])(.*)[^\\]\1/).then((r: Result<string>) => {
-    
+
     const match = r.match
     return match
-    // remove starting single or double quotes
-    .substring(1, match.length - 1)
-    // replace escaped single quotes in string 
-    // (in task description: escaping internal single quotes by doubling them (for example, 'a ''string'' containing quotes'))
-    .replace("''", "'")
+        // remove starting single or double quotes
+        .substring(1, match.length - 1)
+        // replace escaped single quotes in string 
+        // (in task description: escaping internal single quotes by doubling them (for example, 'a ''string'' containing quotes'))
+        .replace("''", "'")
 });
 const num = regex(/[\d\.\-]+/).then((r: Result<string>) => {
     return parseFloat(r.match);
@@ -178,8 +178,8 @@ const on = regex(/on/i);
 const where = regex(/where/i);
 
 
-const qualifiedField = seq(name, dot, name).then((r:Result<string[]>) => new Field(r.match[0], r.match[2]))
-const fieldEquality = seq(qualifiedField, ows, txt("="), ows, qualifiedField).then((r:Result<string[]>) => [r.match[0], r.match[4]])
+const qualifiedField = seq(name, dot, name).then((r: Result<string[]>) => new Field(r.match[0], r.match[2]))
+const fieldEquality = seq(qualifiedField, ows, txt("="), ows, qualifiedField).then((r: Result<string[]>) => [r.match[0], r.match[4]])
 const listOfFields = rep(qualifiedField, comma)
 const comparison = any(
     txt('<>'),
@@ -188,23 +188,23 @@ const comparison = any(
     txt('<'),
     txt('>'),
     txt('=')
-  )
-const val =  any(str, num, bool, nul, qualifiedField)
+)
+const val = any(str, num, bool, nul, qualifiedField)
 
 const selectExpression = seq(select, ws, listOfFields, ws, from, ws, table).then((r: Result<any[]>) => {
     return new SelectClause(r.match[6] as string, r.match[2] as Field[])
 })
 const joinExpression = seq(join, ws, table, ws, on, ws, fieldEquality).then((r: Result<any[]>) => {
-    return new JoinClause(r.match[2]as string, r.match[6] as Field[])
+    return new JoinClause(r.match[2] as string, r.match[6] as Field[])
 })
-const whereExpression =  seq(
-    where, ws, 
+const whereExpression = seq(
+    where, ws,
     // this is the actual comparison a = b
     val, ows, comparison, ows, val,
     ows
-  ).then((r: Result<any[]>) => {
-      return new WhereClause(r.match[2] as string, r.match[6] as string, r.match[4] as string)
-  })
+).then((r: Result<any[]>) => {
+    return new WhereClause(r.match[2] as string, r.match[6] as string, r.match[4] as string)
+})
 
 const queryExpression = seq(
     ows, selectExpression,
@@ -213,25 +213,25 @@ const queryExpression = seq(
 ).then((r: Result<any[]>) => {
     const select = r.match[1] as SelectClause
     let joins = null
-    if(r.match[2] instanceof Array){
+    if (r.match[2] instanceof Array) {
         joins = r.match[2][1] as JoinClause[]
     }
     let where = null
-    if(r.match[3] instanceof Array){
+    if (r.match[3] instanceof Array) {
         where = r.match[3][1] as WhereClause
     }
-    
+
     return new Query(select, joins, where)
 })
 
-function parse(rawString: string) : Query  {
+function parse(rawString: string): Query {
     const noLineBreaks = rawString.replace(/\r?\n|\r/g, "")
     const result = queryExpression.exec(noLineBreaks, 0)
 
-    if(result instanceof ParserError) {
+    if (result instanceof ParserError) {
         throw new Error(`Error while parsing at position ${result.pos}: expected token ${result.expectedToken}, acutal token ${result.stringToParse}`)
-        
-    } 
+
+    }
 
     return result.match
 }
@@ -250,7 +250,7 @@ function pipe(...functions: Array<(ast: Query, db: Database, input: Row[]) => Ro
     };
 }
 
-function isDefined(value: object | undefined | null): boolean{
+function isDefined(value: object | undefined | null): boolean {
     return value !== undefined && value !== null
 }
 
